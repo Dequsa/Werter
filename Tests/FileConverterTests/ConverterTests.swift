@@ -141,7 +141,7 @@ final class ConverterTests: XCTestCase {
     }
 
     func testWheelHitTesting() {
-        let geometry = WheelGeometry()
+        let geometry = WheelGeometry(count: ImageFormat.allCases.count)
         let bounds = CGRect(x: 0, y: 0, width: WheelGeometry.canvas, height: WheelGeometry.canvas)
         let c = CGPoint(x: bounds.midX, y: bounds.midY)
         let at = { (dx: CGFloat, dy: CGFloat) in geometry.index(at: CGPoint(x: c.x + dx, y: c.y + dy), in: bounds) }

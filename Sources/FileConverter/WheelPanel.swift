@@ -29,8 +29,8 @@ final class WheelPanel: NSPanel {
 /// Drop target and mouse handler for the whole wheel. SwiftUI only draws; this view decides what's hovered.
 final class WheelContainerView: NSView {
     private let model: WheelModel
-    private let geometry = WheelGeometry()
-    var onChoose: ((ImageFormat, [URL]) -> Void)?
+    private var geometry: WheelGeometry { WheelGeometry(count: model.options.count) }
+    var onChoose: ((OutputFormat, [URL]) -> Void)?
     var onCancel: (() -> Void)?
 
     init(model: WheelModel) {
@@ -65,9 +65,9 @@ final class WheelContainerView: NSView {
         bounds.contains(convert(point, from: superview)) ? self : nil
     }
 
-    private func format(at windowPoint: NSPoint) -> ImageFormat? {
+    private func format(at windowPoint: NSPoint) -> OutputFormat? {
         guard let index = geometry.index(at: convert(windowPoint, from: nil), in: bounds) else { return nil }
-        let format = ImageFormat.allCases[index]
+        let format = model.options[index]
         return model.disabled.contains(format) ? nil : format
     }
 
@@ -76,14 +76,13 @@ final class WheelContainerView: NSView {
         let format = format(at: windowPoint)
         guard format != model.hovered else { return }
         model.hovered = format
-        if let format { Self.tick(for: format) }
+        if let format, let index = model.options.firstIndex(of: format) { Self.tick(forWedge: index) }
     }
 
     /// A trackpad tap when crossing onto a wedge, with a different feel per wedge
     /// so you can tell them apart without looking. Needs a Force Touch trackpad.
-    private static func tick(for format: ImageFormat) {
+    private static func tick(forWedge index: Int) {
         let patterns: [NSHapticFeedbackManager.FeedbackPattern] = [.levelChange, .alignment, .generic]
-        let index = ImageFormat.allCases.firstIndex(of: format) ?? 0
         NSHapticFeedbackManager.defaultPerformer.perform(patterns[index % patterns.count], performanceTime: .now)
     }
 
@@ -123,8 +122,11 @@ final class WheelContainerView: NSView {
         if model.phase == .choosing { model.hovered = nil }
     }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
-        guard model.phase == .choosing else { return }
+        // While converting, a click hides the wheel; the job carries on in the menu bar.
+        guard model.phase == .choosing else { return onCancel?() ?? () }
         if let format = format(at: event.locationInWindow) {
             onChoose?(format, model.files)
         } else {

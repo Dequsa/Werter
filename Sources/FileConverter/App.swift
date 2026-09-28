@@ -21,6 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let setup = SetupWindowController()
     private var statusItem: NSStatusItem?
     private var dragToggle: NSMenuItem?
+    private var cancelItem: NSMenuItem?
+    private var lastErrorItem: NSMenuItem?
+    /// Bumped per status change so an old "finished" icon doesn't reset a newer one.
+    private var statusGeneration = 0
+    private static let idleIcon = NSImage(systemSymbolName: "arrow.triangle.2.circlepath",
+                                          accessibilityDescription: "File Converter")
 
     private var showsWheelWhileDragging: Bool {
         get { UserDefaults.standard.object(forKey: Self.dragWheelKey) as? Bool ?? true }
@@ -29,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
+        wheel.onJobStatusChanged = { [weak self] status in self?.show(status) }
         dragWatcher.onWheelRequested = { [weak self] urls in
             guard let self, !self.wheel.isVisible else { return }
             self.wheel.present(urls, at: NSEvent.mouseLocation, mode: .drag)
@@ -39,17 +46,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Finder "Open With", or files dropped on the app icon.
     func application(_ application: NSApplication, open urls: [URL]) {
-        let images = urls.filter(ImageFormat.canConvert(from:))
-        guard !images.isEmpty else { return }
-        wheel.presentCentered(images)
+        let files = MediaKind.batch(from: urls)
+        guard !files.isEmpty else { return }
+        wheel.presentCentered(files)
     }
 
     private func setUpStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "File Converter")
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.image = Self.idleIcon
+        item.button?.imagePosition = .imageLeading
+        item.button?.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
 
         let menu = NSMenu()
-        menu.addItem(withTitle: "Convert Images…", action: #selector(chooseFiles), keyEquivalent: "o").target = self
+        menu.addItem(withTitle: "Convert Files…", action: #selector(chooseFiles), keyEquivalent: "o").target = self
+
+        let cancel = NSMenuItem(title: "Cancel Conversion", action: #selector(cancelConversion), keyEquivalent: ".")
+        cancel.target = self
+        cancel.isHidden = true
+        menu.addItem(cancel)
+        cancelItem = cancel
+
+        let lastError = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        lastError.isEnabled = false
+        lastError.isHidden = true
+        menu.addItem(lastError)
+        lastErrorItem = lastError
+
+        menu.addItem(.separator())
 
         let toggle = NSMenuItem(title: "Show Wheel on ⌥-Drag", action: #selector(toggleDragWheel), keyEquivalent: "")
         toggle.target = self
@@ -70,12 +93,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.image]
+        panel.allowedContentTypes = [.image, .movie]
         panel.prompt = "Choose"
         NSApp.activate(ignoringOtherApps: true)
-        let images = panel.runModal() == .OK ? panel.urls.filter(ImageFormat.canConvert(from:)) : []
-        guard !images.isEmpty else { return }
-        wheel.presentCentered(images)
+        let files = panel.runModal() == .OK ? MediaKind.batch(from: panel.urls) : []
+        guard !files.isEmpty else { return }
+        wheel.presentCentered(files)
+    }
+
+    @objc private func cancelConversion() {
+        wheel.cancelAllJobs()
+    }
+
+    /// Progress lives in the menu bar once the wheel has hidden, e.g. during a long video export.
+    private func show(_ status: WheelController.JobStatus) {
+        guard let button = statusItem?.button else { return }
+        statusGeneration += 1
+        cancelItem?.isHidden = !wheel.hasRunningJobs
+
+        switch status {
+        case .idle:
+            button.image = Self.idleIcon
+            button.title = ""
+        case .running(let progress):
+            button.image = Self.idleIcon
+            button.title = " " + progress.formatted(.percent.precision(.fractionLength(0)))
+        case .finished(let failure):
+            button.title = ""
+            button.image = NSImage(systemSymbolName: failure == nil ? "checkmark.circle" : "exclamationmark.triangle",
+                                   accessibilityDescription: failure == nil ? "Converted" : "Conversion failed")
+            lastErrorItem?.title = failure.map { "Last error: \($0)" } ?? ""
+            lastErrorItem?.isHidden = failure == nil
+            let token = statusGeneration
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                guard let self, self.statusGeneration == token else { return }
+                self.show(.idle)
+            }
+        }
     }
 
     @objc private func showSetup() {

@@ -10,14 +10,27 @@ final class WheelController {
         case click
     }
 
+    enum JobStatus {
+        case idle
+        case running(Double)
+        /// `failure` is the first error message, if any file failed.
+        case finished(failure: String?)
+    }
+
+    /// How long the wheel shows progress before getting out of the way (the menu bar takes over).
+    private static let backgroundAfter = 1.5
+
     private let model = WheelModel()
     private let panel: WheelPanel
     private var mode: Mode = .click
     private var dragEndTimer: Timer?
-    /// Bumped on every present/dismiss so stale delayed dismissals do nothing.
+    /// Bumped on every present/dismiss so stale delayed dismissals and job updates leave the wheel alone.
     private var generation = 0
+    private var jobs: [UUID: (task: Task<Void, Never>, progress: Double)] = [:]
 
     var isVisible: Bool { panel.isVisible }
+    var hasRunningJobs: Bool { !jobs.isEmpty }
+    var onJobStatusChanged: ((JobStatus) -> Void)?
 
     init() {
         let container = WheelContainerView(model: model)
@@ -105,28 +118,75 @@ final class WheelController {
         }
     }
 
-    private func convert(_ urls: [URL], to format: ImageFormat) {
+    func cancelAllJobs() {
+        jobs.values.forEach { $0.task.cancel() }
+    }
+
+    private func convert(_ urls: [URL], to format: OutputFormat) {
         guard model.phase == .choosing else { return }
-        let sources = urls.filter { ImageFormat.canConvert(from: $0) && ImageFormat(url: $0) != format }
+        let sources = urls.filter { MediaKind(url: $0) == format.kind && OutputFormat.current(of: $0) != format }
         guard !sources.isEmpty else { return dismiss() }
 
         generation += 1
         let token = generation
+        let id = UUID()
         model.hovered = format
         model.phase = .converting
+        model.progress = 0
 
-        Task { @MainActor in
-            let result = await Task.detached(priority: .userInitiated) { Converter.convertAll(sources, to: format) }.value
-            guard self.generation == token else { return }
-            if result.failures.isEmpty {
-                let count = result.outputs.count
-                self.model.phase = .done(count == 1 ? "Saved" : "Saved \(count)")
-                self.dismiss(after: 0.9)
-            } else {
-                NSLog("FileConverter: %@", result.failures.joined(separator: "; "))
-                self.model.phase = .failed("\(result.failures.count) failed")
-                self.dismiss(after: 2.0)
+        let task = Task { @MainActor [weak self] in
+            // `run` is nonisolated, so the work happens off the main thread; cancelling this task cancels it.
+            let result = await Converter.run(sources, to: format) { fraction in
+                Task { @MainActor in self?.updateProgress(fraction, job: id, token: token) }
             }
+            self?.finish(result, job: id, token: token)
+        }
+        jobs[id] = (task, 0)
+        publishJobStatus()
+
+        // Long jobs (mostly video) continue in the menu bar instead of parking the wheel on screen.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.backgroundAfter))
+            guard let self, self.generation == token, self.model.phase == .converting else { return }
+            self.dismiss()
+        }
+    }
+
+    private func updateProgress(_ fraction: Double, job id: UUID, token: Int) {
+        guard let job = jobs[id] else { return }
+        jobs[id]?.progress = max(job.progress, fraction)
+        if generation == token { model.progress = max(model.progress, fraction) }
+        publishJobStatus()
+    }
+
+    private func finish(_ result: ConversionResult, job id: UUID, token: Int) {
+        jobs[id] = nil
+        if !result.failures.isEmpty {
+            NSLog("FileConverter: %@", result.failures.joined(separator: "; "))
+        }
+        publishJobStatus(finished: result)
+
+        guard generation == token else { return } // wheel already hidden or showing something else
+        if result.cancelled {
+            dismiss()
+        } else if result.failures.isEmpty {
+            let count = result.outputs.count
+            model.phase = .done(count == 1 ? "Saved" : "Saved \(count)")
+            dismiss(after: 0.9)
+        } else {
+            model.phase = .failed(result.failures.count == 1 ? "Failed" : "\(result.failures.count) failed")
+            dismiss(after: 2.5)
+        }
+    }
+
+    private func publishJobStatus(finished result: ConversionResult? = nil) {
+        if !jobs.isEmpty {
+            let progress = jobs.values.map(\.progress).reduce(0, +) / Double(jobs.count)
+            onJobStatusChanged?(.running(progress))
+        } else if let result, !result.cancelled {
+            onJobStatusChanged?(.finished(failure: result.failures.first))
+        } else {
+            onJobStatusChanged?(.idle)
         }
     }
 }

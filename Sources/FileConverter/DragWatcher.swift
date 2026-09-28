@@ -1,6 +1,6 @@
 import AppKit
 
-/// Notices when the user drags supported image files anywhere on screen while holding ⌥.
+/// Notices when the user drags supported photos or videos anywhere on screen while holding ⌥.
 /// Every drag writes to the shared drag pasteboard, so a changed changeCount during a
 /// mouse drag means a new drag session began. Global mouse monitors and reading
 /// `NSEvent.modifierFlags` need no permissions (a global flagsChanged monitor would).
@@ -11,8 +11,8 @@ final class DragWatcher {
     private let pasteboard = NSPasteboard(name: .drag)
     private lazy var lastChangeCount = pasteboard.changeCount
     private var monitor: Any?
-    /// Images in the current drag, waiting for ⌥ to be pressed.
-    private var pendingImages: [URL] = []
+    /// Files in the current drag, waiting for ⌥ to be pressed.
+    private var pendingFiles: [URL] = []
     /// Catches ⌥ pressed while the mouse is held still, when no drag events arrive.
     private var optionPoll: Timer?
 
@@ -33,9 +33,9 @@ final class DragWatcher {
     private func mouseDragged() {
         if pasteboard.changeCount != lastChangeCount {
             lastChangeCount = pasteboard.changeCount
-            pendingImages = draggedImages()
+            pendingFiles = draggedFiles()
         }
-        guard !pendingImages.isEmpty else { return }
+        guard !pendingFiles.isEmpty else { return }
         if !requestWheelIfOptionHeld(), optionPoll == nil {
             optionPoll = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.pollOption() }
@@ -54,23 +54,22 @@ final class DragWatcher {
     @discardableResult
     private func requestWheelIfOptionHeld() -> Bool {
         guard NSEvent.modifierFlags.contains(.option) else { return false }
-        let images = pendingImages
+        let files = pendingFiles
         reset()
-        onWheelRequested?(images)
+        onWheelRequested?(files)
         return true
     }
 
     private func reset() {
-        pendingImages = []
+        pendingFiles = []
         optionPoll?.invalidate()
         optionPoll = nil
     }
 
-    private func draggedImages() -> [URL] {
+    private func draggedFiles() -> [URL] {
         let urls = (pasteboard.readObjects(forClasses: [NSURL.self],
                                            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-        let images = urls.filter(ImageFormat.canConvert(from:))
-        // Only when every dragged file is an image — mixed drags are probably meant for somewhere else.
-        return images.count == urls.count ? images : []
+        // Only when every file is a photo, or every file is a video — mixed drags are probably meant for somewhere else.
+        return MediaKind(urls: urls) != nil ? urls : []
     }
 }

@@ -6,12 +6,22 @@ enum ConversionError: LocalizedError {
     case unreadable(String)
     case unwritable(String)
     case tooLarge(String, limit: Int)
+    case tooLong(String, limit: Int)
+    case noVideo(String)
+    case noAudio(String)
+    case unsupported(String, String)
+    case failed(String, String)
 
     var errorDescription: String? {
         switch self {
         case .unreadable(let name): "Couldn't read \(name)"
         case .unwritable(let name): "Couldn't write \(name)"
         case .tooLarge(let name, let limit): "\(name) is larger than \(limit) px"
+        case .tooLong(let name, let limit): "\(name) is longer than \(limit) s"
+        case .noVideo(let name): "\(name) has no video"
+        case .noAudio(let name): "\(name) has no audio"
+        case .unsupported(let name, let format): "\(name) can't be converted to \(format)"
+        case .failed(let name, let reason): "\(name): \(reason)"
         }
     }
 }
@@ -19,20 +29,37 @@ enum ConversionError: LocalizedError {
 struct ConversionResult: Sendable {
     var outputs: [URL] = []
     var failures: [String] = []
+    var cancelled = false
 }
 
 enum Converter {
     static let lossyQuality = 0.9
 
-    static func convertAll(_ sources: [URL], to format: ImageFormat) -> ConversionResult {
+    /// Converts one file after another, reporting overall progress from 0 to 1.
+    /// Nonisolated and async, so it runs off the main thread; stops early when the task is cancelled.
+    static func run(_ sources: [URL], to format: OutputFormat,
+                    progress: @escaping @Sendable (Double) -> Void) async -> ConversionResult {
         var result = ConversionResult()
-        for source in sources {
+        let share = 1 / Double(max(sources.count, 1))
+        for (index, source) in sources.enumerated() {
+            guard !Task.isCancelled else { break }
+            let base = Double(index) * share
             do {
-                result.outputs.append(try convert(source, to: format))
+                switch format {
+                case .image(let imageFormat):
+                    result.outputs.append(try convert(source, to: imageFormat))
+                case .video(let videoFormat):
+                    result.outputs.append(try await VideoConverter.convert(source, to: videoFormat) { fraction in
+                        progress(base + fraction * share)
+                    })
+                }
             } catch {
+                if Task.isCancelled { break }
                 result.failures.append(error.localizedDescription)
             }
+            progress(base + share)
         }
+        result.cancelled = Task.isCancelled
         return result
     }
 

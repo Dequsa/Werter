@@ -6,7 +6,7 @@ struct WheelGeometry {
     static let diameter: CGFloat = 300
     static let canvas: CGFloat = 340
 
-    let count = ImageFormat.allCases.count
+    let count: Int
     let outerRadius: CGFloat = 141
     let innerRadius: CGFloat = 66
     let centerRadius: CGFloat = 56
@@ -65,7 +65,7 @@ struct Wedge: Shape {
 struct WheelView: View {
     @ObservedObject var model: WheelModel
     @Environment(\.colorScheme) private var colorScheme
-    private let geometry = WheelGeometry()
+    private var geometry: WheelGeometry { WheelGeometry(count: model.options.count) }
 
     private var segmentFill: Color { .white.opacity(colorScheme == .dark ? 0.12 : 0.55) }
     private var rimColor: Color { .white.opacity(colorScheme == .dark ? 0.2 : 0.6) }
@@ -76,7 +76,7 @@ struct WheelView: View {
                 .strokeBorder(rimColor, lineWidth: 1)
                 .frame(width: WheelGeometry.diameter, height: WheelGeometry.diameter)
 
-            ForEach(Array(ImageFormat.allCases.enumerated()), id: \.element) { index, format in
+            ForEach(Array(model.options.enumerated()), id: \.element) { index, format in
                 segment(format, index: index)
             }
 
@@ -87,7 +87,7 @@ struct WheelView: View {
         .animation(.easeOut(duration: 0.15), value: model.phase)
     }
 
-    private func segment(_ format: ImageFormat, index: Int) -> some View {
+    private func segment(_ format: OutputFormat, index: Int) -> some View {
         let isHovered = model.hovered == format
         let wedge = Wedge(startAngle: geometry.startAngle(of: index), endAngle: geometry.endAngle(of: index),
                           innerRadius: geometry.innerRadius, outerRadius: geometry.outerRadius)
@@ -134,9 +134,7 @@ struct WheelView: View {
                     .padding(.vertical, 5)
                     .background(.regularMaterial, in: Capsule())
             case .converting:
-                ProgressView()
-                    .controlSize(.small)
-                    .environment(\.colorScheme, .dark)
+                progressRing
             case .done(let message):
                 status("checkmark.circle.fill", message)
             case .failed(let message):
@@ -155,6 +153,22 @@ struct WheelView: View {
                     .offset(x: 2, y: -2)
             }
         }
+    }
+
+    private var progressRing: some View {
+        ZStack {
+            Circle().stroke(.white.opacity(0.25), lineWidth: 4)
+            Circle()
+                .trim(from: 0, to: max(0.02, model.progress))
+                .stroke(.white, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: 0.15), value: model.progress)
+            Text(model.progress, format: .percent.precision(.fractionLength(0)))
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+        }
+        .padding(14)
     }
 
     private func status(_ symbol: String, _ message: String) -> some View {
