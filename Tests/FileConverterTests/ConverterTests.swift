@@ -1,0 +1,94 @@
+import CoreGraphics
+import ImageIO
+import XCTest
+@testable import FileConverter
+
+final class ConverterTests: XCTestCase {
+    private var directory: URL!
+
+    override func setUpWithError() throws {
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// 64×48 PNG, left half opaque red, right half fully transparent.
+    private func makePNG(named name: String = "sample.png") throws -> URL {
+        let url = directory.appendingPathComponent(name)
+        let context = try XCTUnwrap(CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 32, height: 48))
+        let image = try XCTUnwrap(context.makeImage())
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return url
+    }
+
+    private func load(_ url: URL) throws -> (type: String, image: CGImage) {
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
+        let type = try XCTUnwrap(CGImageSourceGetType(source)) as String
+        return (type, try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil)))
+    }
+
+    func testConvertsToEveryFormat() throws {
+        let png = try makePNG()
+        XCTAssertEqual(ImageFormat(url: png), .png)
+        for format in ImageFormat.allCases where format != .png {
+            let output = try Converter.convert(png, to: format)
+            XCTAssertEqual(output.pathExtension, format.fileExtension)
+            XCTAssertEqual(ImageFormat(url: output), format)
+            let (type, image) = try load(output)
+            XCTAssertEqual(type, format.type.identifier)
+            XCTAssertEqual(image.width, 64)
+            XCTAssertEqual(image.height, 48)
+        }
+    }
+
+    func testRoundTripBackToPNG() throws {
+        let heic = try Converter.convert(try makePNG(), to: .heic)
+        let png = try Converter.convert(heic, to: .png)
+        XCTAssertEqual(png.lastPathComponent, "sample 2.png") // original sample.png is kept
+        XCTAssertEqual(try load(png).type, "public.png")
+    }
+
+    func testJPEGFlattensTransparencyOnWhite() throws {
+        let jpeg = try Converter.convert(try makePNG(), to: .jpeg)
+        let image = try load(jpeg).image
+        XCTAssertFalse(image.hasAlpha)
+
+        // Sample the transparent (right) half: it should be white, not black.
+        let context = try XCTUnwrap(CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 64 * 4,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 64, height: 48))
+        let pixels = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
+        let offset = (24 * 64 + 56) * 4
+        XCTAssertGreaterThan(pixels[offset], 240)
+        XCTAssertGreaterThan(pixels[offset + 1], 240)
+        XCTAssertGreaterThan(pixels[offset + 2], 240)
+    }
+
+    func testNeverOverwrites() throws {
+        let png = try makePNG()
+        let first = try Converter.convert(png, to: .jpeg)
+        let second = try Converter.convert(png, to: .jpeg)
+        XCTAssertEqual(first.lastPathComponent, "sample.jpg")
+        XCTAssertEqual(second.lastPathComponent, "sample 2.jpg")
+    }
+
+    func testWheelHitTesting() {
+        let geometry = WheelGeometry()
+        let bounds = CGRect(x: 0, y: 0, width: WheelGeometry.canvas, height: WheelGeometry.canvas)
+        let c = CGPoint(x: bounds.midX, y: bounds.midY)
+        XCTAssertNil(geometry.index(at: c, in: bounds))                                   // centre = cancel
+        XCTAssertEqual(geometry.index(at: CGPoint(x: c.x, y: c.y - 100), in: bounds), 0)  // top → JPG
+        XCTAssertEqual(geometry.index(at: CGPoint(x: c.x + 90, y: c.y + 60), in: bounds), 1) // lower right
+        XCTAssertEqual(geometry.index(at: CGPoint(x: c.x - 90, y: c.y + 60), in: bounds), 2) // lower left
+    }
+}
