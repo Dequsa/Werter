@@ -36,9 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
         wheel.onJobStatusChanged = { [weak self] status in self?.show(status) }
-        dragWatcher.onWheelRequested = { [weak self] urls in
+        dragWatcher.onWheelRequested = { [weak self] urls, wheelMode in
             guard let self, !self.wheel.isVisible else { return }
-            self.wheel.present(urls, at: NSEvent.mouseLocation, mode: .drag)
+            self.wheel.present(urls, at: NSEvent.mouseLocation, mode: .drag, wheel: wheelMode)
         }
         if showsWheelWhileDragging { dragWatcher.start() }
         if !SetupWindowController.hasCompletedSetup { setup.show() }
@@ -79,6 +79,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggle.state = showsWheelWhileDragging ? .on : .off
         menu.addItem(toggle)
         dragToggle = toggle
+
+        let sounds = NSMenuItem(title: "Sound Effects", action: #selector(toggleSounds), keyEquivalent: "")
+        sounds.target = self
+        sounds.state = TickSound.shared.isEnabled ? .on : .off
+        menu.addItem(sounds)
 
         menu.addItem(withTitle: "Setup & Permissions…", action: #selector(showSetup), keyEquivalent: ",").target = self
 
@@ -135,6 +140,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showSetup() {
         setup.show()
+    }
+
+    @objc private func toggleSounds(_ sender: NSMenuItem) {
+        TickSound.shared.isEnabled.toggle()
+        sender.state = TickSound.shared.isEnabled ? .on : .off
+        guard TickSound.shared.isEnabled else { return }
+        TickSound.shared.play() // preview it, then let the audio hardware go again
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            if self?.wheel.isVisible == false { TickSound.shared.stop() }
+        }
     }
 
     @objc private func toggleDragWheel() {

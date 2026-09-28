@@ -15,35 +15,8 @@ final class VideoConverterTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    /// A silent 1-second 320×240 H.264 QuickTime clip, 30 fps, colour changing each frame.
     private func makeMovie() async throws -> URL {
-        let url = directory.appendingPathComponent("clip.mov")
-        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
-        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 320, AVVideoHeightKey: 240,
-        ])
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: 320, kCVPixelBufferHeightKey as String: 240,
-        ])
-        writer.add(input)
-        XCTAssertTrue(writer.startWriting())
-        writer.startSession(atSourceTime: .zero)
-
-        for frame in 0..<30 {
-            while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
-            var buffer: CVPixelBuffer?
-            CVPixelBufferPoolCreatePixelBuffer(nil, try XCTUnwrap(adaptor.pixelBufferPool), &buffer)
-            let pixels = try XCTUnwrap(buffer)
-            CVPixelBufferLockBaseAddress(pixels, [])
-            memset(CVPixelBufferGetBaseAddress(pixels), Int32(frame * 8), CVPixelBufferGetDataSize(pixels))
-            CVPixelBufferUnlockBaseAddress(pixels, [])
-            XCTAssertTrue(adaptor.append(pixels, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 30)))
-        }
-        input.markAsFinished()
-        await writer.finishWriting()
-        XCTAssertEqual(writer.status, .completed, writer.error?.localizedDescription ?? "")
-        return url
+        try await TestMedia.movie(in: directory)
     }
 
     private func videoCodec(of url: URL) async throws -> FourCharCode {
@@ -66,8 +39,8 @@ final class VideoConverterTests: XCTestCase {
         XCTAssertNil(MediaKind(urls: [url("a.mov"), url("a.jpg")]))  // mixed → no wheel
         XCTAssertEqual(MediaKind.batch(from: [url("a.txt"), url("a.mov"), url("a.jpg"), url("b.mp4")]),
                        [url("a.mov"), url("b.mp4")])
-        XCTAssertEqual(OutputFormat.current(of: url("a.mov")), .video(.mov))
-        XCTAssertNil(OutputFormat.current(of: url("a.mp4"))) // MP4 → H.264 MP4 is still useful
+        XCTAssertEqual(WheelOption.current(of: url("a.mov")), .video(.mov))
+        XCTAssertNil(WheelOption.current(of: url("a.mp4"))) // MP4 → H.264 MP4 is still useful
     }
 
     func testExportsToEveryCodec() async throws {
@@ -105,6 +78,16 @@ final class VideoConverterTests: XCTestCase {
             XCTAssertEqual(error.localizedDescription, "clip.mov has no audio")
         }
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent("clip.m4a").path))
+    }
+
+    func testAudioExtraction() async throws {
+        let movie = try await TestMedia.movie(in: directory, withAudio: true)
+        let m4a = try await VideoConverter.convert(movie, to: .m4a) { _ in }
+        let asset = AVURLAsset(url: m4a)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        XCTAssertEqual(audioTracks.count, 1)
+        XCTAssertTrue(videoTracks.isEmpty)
     }
 
     func testRunReportsProgressAndResults() async throws {

@@ -37,16 +37,21 @@ final class WheelController {
         panel = WheelPanel(content: container)
         container.onChoose = { [weak self] format, urls in self?.convert(urls, to: format) }
         container.onCancel = { [weak self] in self?.dismiss() }
+        container.onShiftPressed = { [weak self] in
+            guard let self, self.mode == .click else { return }
+            self.model.switchMode(to: self.model.mode == .convert ? .actions : .convert)
+        }
         panel.onResignKey = { [weak self] in
             guard let self, self.mode == .click, self.model.phase == .choosing else { return }
             self.dismiss()
         }
     }
 
-    func present(_ urls: [URL], at point: NSPoint, mode: Mode) {
+    func present(_ urls: [URL], at point: NSPoint, mode: Mode, wheel: WheelMode = .convert) {
         generation += 1
         self.mode = mode
-        model.load(urls)
+        model.load(urls, mode: wheel)
+        TickSound.shared.prepare()
 
         let size = WheelGeometry.canvas
         var origin = NSPoint(x: point.x - size / 2, y: point.y - size / 2)
@@ -90,6 +95,7 @@ final class WheelController {
                 guard let self, self.generation == token else { return }
                 self.panel.orderOut(nil)
                 self.model.load([])
+                TickSound.shared.stop()
             }
         })
     }
@@ -109,6 +115,9 @@ final class WheelController {
         dragEndTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] timer in
             MainActor.assumeIsolated {
                 guard let self else { return timer.invalidate() }
+                // ⇧ pressed mid-drag switches to actions and stays there, so letting go of the
+                // keys before dropping can't land the file on a different wheel.
+                if NSEvent.modifierFlags.contains(.shift) { self.model.switchMode(to: .actions) }
                 guard NSEvent.pressedMouseButtons & 1 == 0 else { return }
                 timer.invalidate()
                 self.dragEndTimer = nil
@@ -122,9 +131,9 @@ final class WheelController {
         jobs.values.forEach { $0.task.cancel() }
     }
 
-    private func convert(_ urls: [URL], to format: OutputFormat) {
+    private func convert(_ urls: [URL], to format: WheelOption) {
         guard model.phase == .choosing else { return }
-        let sources = urls.filter { MediaKind(url: $0) == format.kind && OutputFormat.current(of: $0) != format }
+        let sources = urls.filter { MediaKind(url: $0) == format.kind && WheelOption.current(of: $0) != format }
         guard !sources.isEmpty else { return dismiss() }
 
         generation += 1

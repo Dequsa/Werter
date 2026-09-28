@@ -30,8 +30,9 @@ final class WheelPanel: NSPanel {
 final class WheelContainerView: NSView {
     private let model: WheelModel
     private var geometry: WheelGeometry { WheelGeometry(count: model.options.count) }
-    var onChoose: ((OutputFormat, [URL]) -> Void)?
+    var onChoose: ((WheelOption, [URL]) -> Void)?
     var onCancel: (() -> Void)?
+    var onShiftPressed: (() -> Void)?
 
     init(model: WheelModel) {
         self.model = model
@@ -65,7 +66,7 @@ final class WheelContainerView: NSView {
         bounds.contains(convert(point, from: superview)) ? self : nil
     }
 
-    private func format(at windowPoint: NSPoint) -> OutputFormat? {
+    private func format(at windowPoint: NSPoint) -> WheelOption? {
         guard let index = geometry.index(at: convert(windowPoint, from: nil), in: bounds) else { return nil }
         let format = model.options[index]
         return model.disabled.contains(format) ? nil : format
@@ -76,7 +77,10 @@ final class WheelContainerView: NSView {
         let format = format(at: windowPoint)
         guard format != model.hovered else { return }
         model.hovered = format
-        if let format, let index = model.options.firstIndex(of: format) { Self.tick(forWedge: index) }
+        if let format, let index = model.options.firstIndex(of: format) {
+            Self.tick(forWedge: index)
+            TickSound.shared.play()
+        }
     }
 
     /// A trackpad tap when crossing onto a wedge, with a different feel per wedge
@@ -132,6 +136,12 @@ final class WheelContainerView: NSView {
         } else {
             onCancel?()
         }
+    }
+
+    /// Click mode: ⇧ flips between formats and actions.
+    override func flagsChanged(with event: NSEvent) {
+        if event.modifierFlags.contains(.shift) { onShiftPressed?() }
+        super.flagsChanged(with: event)
     }
 
     override func keyDown(with event: NSEvent) {

@@ -6,7 +6,8 @@ import AppKit
 /// `NSEvent.modifierFlags` need no permissions (a global flagsChanged monitor would).
 @MainActor
 final class DragWatcher {
-    var onWheelRequested: (([URL]) -> Void)?
+    /// ⌥ alone asks for the format wheel, ⇧⌥ for the actions wheel.
+    var onWheelRequested: (([URL], WheelMode) -> Void)?
 
     private let pasteboard = NSPasteboard(name: .drag)
     private lazy var lastChangeCount = pasteboard.changeCount
@@ -55,8 +56,9 @@ final class DragWatcher {
     private func requestWheelIfOptionHeld() -> Bool {
         guard NSEvent.modifierFlags.contains(.option) else { return false }
         let files = pendingFiles
+        let mode: WheelMode = NSEvent.modifierFlags.contains(.shift) ? .actions : .convert
         reset()
-        onWheelRequested?(files)
+        onWheelRequested?(files, mode)
         return true
     }
 

@@ -14,29 +14,23 @@ final class WheelModel: ObservableObject {
     @Published private(set) var files: [URL] = []
     @Published private(set) var thumbnail: NSImage?
     @Published private(set) var sizeText = ""
-    /// The wedges, which depend on whether photos or videos were dropped.
-    @Published private(set) var options: [OutputFormat] = MediaKind.image.outputs
+    /// Formats (⌥) or actions (⇧⌥).
+    @Published private(set) var mode: WheelMode = .convert
+    /// The wedges, which depend on the mode and on whether photos or videos were dropped.
+    @Published private(set) var options: [WheelOption] = MediaKind.image.options(for: .convert)
     /// Formats every file is already in — nothing to convert to.
-    @Published private(set) var disabled: Set<OutputFormat> = []
-    @Published var hovered: OutputFormat?
+    @Published private(set) var disabled: Set<WheelOption> = []
+    @Published var hovered: WheelOption?
     @Published var phase: Phase = .choosing
     @Published var progress: Double = 0
 
-    func load(_ urls: [URL]) {
+    func load(_ urls: [URL], mode: WheelMode = .convert) {
         files = urls
-        hovered = nil
         phase = .choosing
         progress = 0
         thumbnail = nil
-        options = (MediaKind(urls: urls) ?? .image).outputs
-
-        // Only grey out a format when *every* file is already in it (a RAW + a JPG can still go to JPG).
-        let current = urls.map(OutputFormat.current(of:))
-        if let first = current.first, let format = first, current.allSatisfy({ $0 == format }) {
-            disabled = [format]
-        } else {
-            disabled = []
-        }
+        self.mode = mode
+        refreshOptions()
 
         let bytes = urls.reduce(Int64(0)) { total, url in
             total + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
@@ -48,6 +42,24 @@ final class WheelModel: ObservableObject {
             let image = await Task.detached(priority: .userInitiated) { await Self.makeThumbnail(first) }.value
             guard let image, self.files.first == first else { return }
             self.thumbnail = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        }
+    }
+
+    func switchMode(to newMode: WheelMode) {
+        guard phase == .choosing, newMode != mode else { return }
+        mode = newMode
+        refreshOptions()
+    }
+
+    private func refreshOptions() {
+        hovered = nil
+        options = (MediaKind(urls: files) ?? .image).options(for: mode)
+        // Only grey out a format when *every* file is already in it (a RAW + a JPG can still go to JPG).
+        let current = files.map(WheelOption.current(of:))
+        if mode == .convert, let first = current.first, let format = first, current.allSatisfy({ $0 == format }) {
+            disabled = [format]
+        } else {
+            disabled = []
         }
     }
 

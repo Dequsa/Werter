@@ -3,13 +3,13 @@ import SwiftUI
 /// Shared by drawing (SwiftUI) and hit testing (AppKit) so they always agree.
 /// Coordinates are y-down; angles grow clockwise, 0 = pointing right.
 struct WheelGeometry {
-    static let diameter: CGFloat = 300
-    static let canvas: CGFloat = 340
+    static let diameter: CGFloat = 270
+    static let canvas: CGFloat = 306
 
     let count: Int
-    let outerRadius: CGFloat = 141
-    let innerRadius: CGFloat = 66
-    let centerRadius: CGFloat = 56
+    let outerRadius: CGFloat = 127
+    let innerRadius: CGFloat = 59
+    let centerRadius: CGFloat = 50
 
     var span: Double { 2 * .pi / Double(count) }
 
@@ -35,8 +35,8 @@ struct Wedge: Shape {
     var endAngle: Angle
     var innerRadius: CGFloat
     var outerRadius: CGFloat
-    var gap: CGFloat = 7
-    var cornerRadius: CGFloat = 12
+    var gap: CGFloat = 6
+    var cornerRadius: CGFloat = 11
 
     func path(in rect: CGRect) -> Path {
         // Build a shape shrunk by the corner radius, then grow it back with a round-joined stroke.
@@ -87,7 +87,7 @@ struct WheelView: View {
         .animation(.easeOut(duration: 0.15), value: model.phase)
     }
 
-    private func segment(_ format: OutputFormat, index: Int) -> some View {
+    private func segment(_ format: WheelOption, index: Int) -> some View {
         let isHovered = model.hovered == format
         let wedge = Wedge(startAngle: geometry.startAngle(of: index), endAngle: geometry.endAngle(of: index),
                           innerRadius: geometry.innerRadius, outerRadius: geometry.outerRadius)
@@ -97,8 +97,7 @@ struct WheelView: View {
         return ZStack {
             wedge.fill(isHovered ? Color.accentColor : segmentFill)
             wedge.stroke(rimColor, lineWidth: 0.5)
-            Text(format.label)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+            wedgeLabel(format)
                 .foregroundStyle(isHovered ? Color.white : Color.primary)
                 .offset(x: cos(mid.radians) * labelRadius, y: sin(mid.radians) * labelRadius)
         }
@@ -126,7 +125,7 @@ struct WheelView: View {
 
             switch model.phase {
             case .choosing:
-                Text(model.hovered.map { "→ \($0.label)" } ?? model.sizeText)
+                Text(model.hovered?.summary ?? model.sizeText)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .lineLimit(1)
@@ -153,6 +152,25 @@ struct WheelView: View {
                     .offset(x: 2, y: -2)
             }
         }
+    }
+
+    /// Formats are a single word; actions get a symbol or label plus a small caption.
+    private func wedgeLabel(_ option: WheelOption) -> some View {
+        VStack(spacing: 1) {
+            if let symbol = option.symbol {
+                Image(systemName: symbol).font(.system(size: 18, weight: .semibold))
+                    .frame(height: 20)
+            } else {
+                Text(option.label).font(.system(size: 15, weight: .bold, design: .rounded))
+            }
+            if let caption = option.caption {
+                Text(caption)
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .opacity(0.7)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize()
     }
 
     private var progressRing: some View {
