@@ -3,9 +3,10 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// Output formats, one wedge each, clockwise from the top. Adding a case here adds a wedge
-/// (it must be a type ImageIO can write — see `CGImageDestinationCopyTypeIdentifiers()`).
+/// (it must be a type ImageIO can write — see `CGImageDestinationCopyTypeIdentifiers()` —
+/// or have its own encoder, like WebP).
 enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
-    case jpeg, png, heic, avif, tiff, gif, bmp, pdf
+    case jpeg, png, webp, heic, avif, tiff, gif, bmp, pdf
 
     var id: String { rawValue }
 
@@ -20,6 +21,7 @@ enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .jpeg: .jpeg
         case .png: .png
+        case .webp: .webP
         case .heic: .heic
         case .avif: UTType("public.avif")!
         case .tiff: .tiff
@@ -37,11 +39,11 @@ enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    var isLossy: Bool { [.jpeg, .heic, .avif].contains(self) }
+    var isLossy: Bool { [.jpeg, .webp, .heic, .avif].contains(self) }
     /// BMP technically can hold alpha, but most apps ignore it and show black.
     var supportsAlpha: Bool { ![.jpeg, .bmp].contains(self) }
 
-    /// The output format a file is already in, or nil if it's something else (RAW, WebP, …).
+    /// The output format a file is already in, or nil if it's something else (RAW, JPEG XL, …).
     init?(url: URL) {
         guard let type = url.contentType else { return nil }
         if let match = Self.allCases.first(where: { type.conforms(to: $0.type) }) {
@@ -53,7 +55,7 @@ enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Anything ImageIO can decode: the output formats plus RAW, WebP, JPEG XL, PSD, …
+    /// Anything ImageIO can decode: the output formats plus RAW, JPEG XL, PSD, …
     static func canConvert(from url: URL) -> Bool {
         guard let type = url.contentType, type.conforms(to: .image) else { return false }
         return readableTypes.contains { type.conforms(to: $0) }

@@ -5,11 +5,13 @@ import ImageIO
 enum ConversionError: LocalizedError {
     case unreadable(String)
     case unwritable(String)
+    case tooLarge(String, limit: Int)
 
     var errorDescription: String? {
         switch self {
         case .unreadable(let name): "Couldn't read \(name)"
         case .unwritable(let name): "Couldn't write \(name)"
+        case .tooLarge(let name, let limit): "\(name) is larger than \(limit) px"
         }
     }
 }
@@ -42,10 +44,24 @@ enum Converter {
         }
         // Keep metadata (EXIF, GPS, orientation, color profile) from the original.
         var properties = (CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any]) ?? [:]
-        guard var image = source.isRawImage
-            ? renderRaw(imageSource, properties: &properties)
+        // WebP is written without EXIF, so the rotation has to be baked into the pixels.
+        guard var image = source.isRawImage || format == .webp
+            ? renderUpright(imageSource, properties: &properties)
             : CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
         else { throw ConversionError.unreadable(name) }
+
+        let destination = availableURL(for: source.deletingPathExtension().appendingPathExtension(format.fileExtension))
+        if format == .webp {
+            // Keep screenshots and graphics pixel-perfect; photos get the usual lossy quality.
+            let lossless = ImageFormat(url: source).map { !$0.isLossy } ?? false
+            let data = try WebPEncoder.encode(image, quality: lossyQuality, lossless: lossless, name: name)
+            do {
+                try data.write(to: destination, options: .withoutOverwriting)
+            } catch {
+                throw ConversionError.unwritable(destination.lastPathComponent)
+            }
+            return destination
+        }
 
         if format.isLossy {
             properties[kCGImageDestinationLossyCompressionQuality] = lossyQuality
@@ -59,7 +75,6 @@ enum Converter {
             image = flattened
         }
 
-        let destination = availableURL(for: source.deletingPathExtension().appendingPathExtension(format.fileExtension))
         guard let imageDestination = CGImageDestinationCreateWithURL(
             destination as CFURL, format.type.identifier as CFString, 1, nil
         ) else { throw ConversionError.unwritable(destination.lastPathComponent) }
@@ -87,13 +102,13 @@ enum Converter {
         }
     }
 
-    /// Develops a RAW at full size with the camera's default look, already rotated upright,
-    /// so the orientation tag is reset to avoid rotating twice.
-    private static func renderRaw(_ source: CGImageSource, properties: inout [CFString: Any]) -> CGImage? {
+    /// Decodes at full size, already rotated upright, and resets the orientation tag to avoid
+    /// rotating twice. For RAWs this develops the sensor data with the camera's default look.
+    private static func renderUpright(_ source: CGImageSource, properties: inout [CFString: Any]) -> CGImage? {
         let width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
         let height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
         var options: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true, // decode the RAW, not the embedded preview
+            kCGImageSourceCreateThumbnailFromImageAlways: true, // full image, not an embedded preview
             kCGImageSourceCreateThumbnailWithTransform: true,
         ]
         if max(width, height) > 0 { options[kCGImageSourceThumbnailMaxPixelSize] = max(width, height) }

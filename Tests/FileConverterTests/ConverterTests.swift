@@ -95,6 +95,38 @@ final class ConverterTests: XCTestCase {
         XCTAssertEqual(tiffInfo[kCGImagePropertyTIFFCompression] as? Int, 5)
     }
 
+    /// Decodes to straight RGBA8 sRGB so pixels can be compared.
+    private func rgba(_ image: CGImage) throws -> [UInt8] {
+        var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8,
+                                              bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return pixels
+    }
+
+    func testWebPFromPNGIsLosslessAndKeepsAlpha() throws {
+        let png = try makePNG()
+        let webp = try Converter.convert(png, to: .webp)
+        let (type, image) = try load(webp)
+        XCTAssertEqual(type, "org.webmproject.webp")
+        XCTAssertTrue(image.hasAlpha)
+        XCTAssertEqual(try rgba(image), try rgba(load(png).image))
+    }
+
+    func testWebPBakesInOrientation() throws {
+        // A 64×48 JPEG tagged "rotate 90° CW" displays as 48×64.
+        let jpeg = directory.appendingPathComponent("rotated.jpg")
+        let source = try load(makePNG()).image
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(jpeg as CFURL, "public.jpeg" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, source, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+
+        let image = try load(Converter.convert(jpeg, to: .webp)).image
+        XCTAssertEqual(image.width, 48)
+        XCTAssertEqual(image.height, 64)
+    }
+
     func testInputDetection() {
         let url = { (name: String) in URL(fileURLWithPath: "/tmp/\(name)") }
         for name in ["a.png", "a.jpg", "a.heic", "a.HEIF", "a.webp", "a.dng", "a.cr2", "a.nef", "a.arw", "a.raf", "a.avif", "a.tif", "a.gif"] {
@@ -115,9 +147,9 @@ final class ConverterTests: XCTestCase {
         let at = { (dx: CGFloat, dy: CGFloat) in geometry.index(at: CGPoint(x: c.x + dx, y: c.y + dy), in: bounds) }
         XCTAssertNil(at(0, 0))            // centre = cancel
         XCTAssertEqual(at(0, -100), 0)    // top → JPG
-        XCTAssertEqual(at(100, 0), 2)     // right → HEIC
-        XCTAssertEqual(at(0, 100), 4)     // bottom → TIFF
-        XCTAssertEqual(at(-100, 0), 6)    // left → BMP
-        XCTAssertEqual(at(-70, -70), 7)   // top-left → PDF
+        XCTAssertEqual(at(100, 0), 2)     // right → WEBP
+        XCTAssertEqual(at(0, 100), 5)     // bottom → TIFF
+        XCTAssertEqual(at(-100, 0), 7)    // left → BMP
+        XCTAssertEqual(at(-70, -70), 8)   // top-left → PDF
     }
 }
