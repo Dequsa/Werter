@@ -107,7 +107,7 @@ final class WheelController {
 
     private func convert(_ urls: [URL], to format: ImageFormat) {
         guard model.phase == .choosing else { return }
-        let sources = urls.filter { url in ImageFormat(url: url).map { $0 != format } ?? false }
+        let sources = urls.filter { ImageFormat.canConvert(from: $0) && ImageFormat(url: $0) != format }
         guard !sources.isEmpty else { return dismiss() }
 
         generation += 1

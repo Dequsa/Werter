@@ -43,6 +43,11 @@ final class ConverterTests: XCTestCase {
             let output = try Converter.convert(png, to: format)
             XCTAssertEqual(output.pathExtension, format.fileExtension)
             XCTAssertEqual(ImageFormat(url: output), format)
+            if format == .pdf { // ImageIO writes PDF but can't read it back
+                let page = try XCTUnwrap(CGPDFDocument(output as CFURL)?.page(at: 1))
+                XCTAssertEqual(page.getBoxRect(.mediaBox).size, CGSize(width: 64, height: 48))
+                continue
+            }
             let (type, image) = try load(output)
             XCTAssertEqual(type, format.type.identifier)
             XCTAssertEqual(image.width, 64)
@@ -82,13 +87,37 @@ final class ConverterTests: XCTestCase {
         XCTAssertEqual(second.lastPathComponent, "sample 2.jpg")
     }
 
+    func testTIFFIsCompressed() throws {
+        let tiff = try Converter.convert(try makePNG(), to: .tiff)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(tiff as CFURL, nil))
+        let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        let tiffInfo = try XCTUnwrap(properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any])
+        XCTAssertEqual(tiffInfo[kCGImagePropertyTIFFCompression] as? Int, 5)
+    }
+
+    func testInputDetection() {
+        let url = { (name: String) in URL(fileURLWithPath: "/tmp/\(name)") }
+        for name in ["a.png", "a.jpg", "a.heic", "a.HEIF", "a.webp", "a.dng", "a.cr2", "a.nef", "a.arw", "a.raf", "a.avif", "a.tif", "a.gif"] {
+            XCTAssertTrue(ImageFormat.canConvert(from: url(name)), name)
+        }
+        for name in ["a.pdf", "a.txt", "a.mov", "a.docx"] {
+            XCTAssertFalse(ImageFormat.canConvert(from: url(name)), name)
+        }
+        XCTAssertNil(ImageFormat(url: url("a.dng")))   // RAW is input-only
+        XCTAssertEqual(ImageFormat(url: url("a.tif")), .tiff)
+        XCTAssertTrue(url("a.CR3").isRawImage)
+    }
+
     func testWheelHitTesting() {
         let geometry = WheelGeometry()
         let bounds = CGRect(x: 0, y: 0, width: WheelGeometry.canvas, height: WheelGeometry.canvas)
         let c = CGPoint(x: bounds.midX, y: bounds.midY)
-        XCTAssertNil(geometry.index(at: c, in: bounds))                                   // centre = cancel
-        XCTAssertEqual(geometry.index(at: CGPoint(x: c.x, y: c.y - 100), in: bounds), 0)  // top → JPG
-        XCTAssertEqual(geometry.index(at: CGPoint(x: c.x + 90, y: c.y + 60), in: bounds), 1) // lower right
-        XCTAssertEqual(geometry.index(at: CGPoint(x: c.x - 90, y: c.y + 60), in: bounds), 2) // lower left
+        let at = { (dx: CGFloat, dy: CGFloat) in geometry.index(at: CGPoint(x: c.x + dx, y: c.y + dy), in: bounds) }
+        XCTAssertNil(at(0, 0))            // centre = cancel
+        XCTAssertEqual(at(0, -100), 0)    // top → JPG
+        XCTAssertEqual(at(100, 0), 2)     // right → HEIC
+        XCTAssertEqual(at(0, 100), 4)     // bottom → TIFF
+        XCTAssertEqual(at(-100, 0), 6)    // left → BMP
+        XCTAssertEqual(at(-70, -70), 7)   // top-left → PDF
     }
 }

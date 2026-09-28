@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Finder "Open With", or files dropped on the app icon.
     func application(_ application: NSApplication, open urls: [URL]) {
-        let images = urls.filter { ImageFormat(url: $0) != nil }
+        let images = urls.filter(ImageFormat.canConvert(from:))
         guard !images.isEmpty else { return }
         wheel.presentCentered(images)
     }
@@ -70,11 +70,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = ImageFormat.allCases.map(\.type) + [.heif]
+        panel.allowedContentTypes = [.image]
         panel.prompt = "Choose"
         NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
-        wheel.presentCentered(panel.urls)
+        let images = panel.runModal() == .OK ? panel.urls.filter(ImageFormat.canConvert(from:)) : []
+        guard !images.isEmpty else { return }
+        wheel.presentCentered(images)
     }
 
     @objc private func showSetup() {

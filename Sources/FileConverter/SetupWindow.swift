@@ -51,7 +51,7 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Welcome to File Converter")
                     .font(.system(size: 22, weight: .bold, design: .rounded))
-                Text("Hold **⌥ Option** while dragging PNG, JPEG or HEIC files and the wheel appears. Drop on a format to convert — the copy is saved next to the original.")
+                Text("Hold **⌥ Option** while dragging photos (JPEG, PNG, HEIC, RAW, WebP and more) and the wheel appears. Drop on a format to convert; the copy is saved next to the original.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

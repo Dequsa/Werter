@@ -36,10 +36,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
             <key>LSHandlerRank</key><string>Alternate</string>
             <key>LSItemContentTypes</key>
             <array>
-                <string>public.png</string>
-                <string>public.jpeg</string>
-                <string>public.heic</string>
-                <string>public.heif</string>
+                <string>public.image</string>
             </array>
         </dict>
     </array>

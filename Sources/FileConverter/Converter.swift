@@ -37,14 +37,23 @@ enum Converter {
     /// Writes a converted copy next to `source` and returns its URL. Never overwrites existing files.
     static func convert(_ source: URL, to format: ImageFormat) throws -> URL {
         let name = source.lastPathComponent
-        guard let imageSource = CGImageSourceCreateWithURL(source as CFURL, nil),
-              var image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
-        else { throw ConversionError.unreadable(name) }
-
+        guard let imageSource = CGImageSourceCreateWithURL(source as CFURL, nil) else {
+            throw ConversionError.unreadable(name)
+        }
         // Keep metadata (EXIF, GPS, orientation, color profile) from the original.
         var properties = (CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any]) ?? [:]
+        guard var image = source.isRawImage
+            ? renderRaw(imageSource, properties: &properties)
+            : CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
+        else { throw ConversionError.unreadable(name) }
+
         if format.isLossy {
             properties[kCGImageDestinationLossyCompressionQuality] = lossyQuality
+        }
+        if format == .tiff {
+            var tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+            tiff[kCGImagePropertyTIFFCompression] = 5 // LZW: lossless, far smaller than uncompressed
+            properties[kCGImagePropertyTIFFDictionary] = tiff
         }
         if !format.supportsAlpha, image.hasAlpha, let flattened = flattenOnWhite(image) {
             image = flattened
@@ -78,7 +87,29 @@ enum Converter {
         }
     }
 
-    /// JPEG has no alpha channel, so transparent pixels would turn black; composite onto white instead.
+    /// Develops a RAW at full size with the camera's default look, already rotated upright,
+    /// so the orientation tag is reset to avoid rotating twice.
+    private static func renderRaw(_ source: CGImageSource, properties: inout [CFString: Any]) -> CGImage? {
+        let width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
+        let height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
+        var options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true, // decode the RAW, not the embedded preview
+            kCGImageSourceCreateThumbnailWithTransform: true,
+        ]
+        if max(width, height) > 0 { options[kCGImageSourceThumbnailMaxPixelSize] = max(width, height) }
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+
+        properties[kCGImagePropertyOrientation] = 1
+        if var tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+            tiff[kCGImagePropertyTIFFOrientation] = 1
+            properties[kCGImagePropertyTIFFDictionary] = tiff
+        }
+        properties[kCGImagePropertyPixelWidth] = image.width
+        properties[kCGImagePropertyPixelHeight] = image.height
+        return image
+    }
+
+    /// JPEG and BMP have no (usable) alpha channel, so transparent pixels would turn black; composite onto white instead.
     private static func flattenOnWhite(_ image: CGImage) -> CGImage? {
         let rect = CGRect(x: 0, y: 0, width: image.width, height: image.height)
         let colorSpace = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil }

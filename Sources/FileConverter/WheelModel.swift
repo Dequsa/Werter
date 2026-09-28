@@ -24,8 +24,13 @@ final class WheelModel: ObservableObject {
         phase = .choosing
         thumbnail = nil
 
-        let formats = Set(urls.compactMap(ImageFormat.init(url:)))
-        disabled = formats.count == 1 ? formats : []
+        // Only grey out a format when *every* file is already in it (a RAW + a JPG can still go to JPG).
+        let formats = urls.map(ImageFormat.init(url:))
+        if let first = formats.first, let format = first, formats.allSatisfy({ $0 == format }) {
+            disabled = [format]
+        } else {
+            disabled = []
+        }
 
         let bytes = urls.reduce(Int64(0)) { total, url in
             total + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)

@@ -36,7 +36,7 @@ struct Wedge: Shape {
     var innerRadius: CGFloat
     var outerRadius: CGFloat
     var gap: CGFloat = 7
-    var cornerRadius: CGFloat = 14
+    var cornerRadius: CGFloat = 12
 
     func path(in rect: CGRect) -> Path {
         // Build a shape shrunk by the corner radius, then grow it back with a round-joined stroke.
@@ -98,7 +98,7 @@ struct WheelView: View {
             wedge.fill(isHovered ? Color.accentColor : segmentFill)
             wedge.stroke(rimColor, lineWidth: 0.5)
             Text(format.label)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.system(size: 15, weight: .bold, design: .rounded))
                 .foregroundStyle(isHovered ? Color.white : Color.primary)
                 .offset(x: cos(mid.radians) * labelRadius, y: sin(mid.radians) * labelRadius)
         }

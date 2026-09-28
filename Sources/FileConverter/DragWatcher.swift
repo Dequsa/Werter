@@ -69,7 +69,7 @@ final class DragWatcher {
     private func draggedImages() -> [URL] {
         let urls = (pasteboard.readObjects(forClasses: [NSURL.self],
                                            options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-        let images = urls.filter { ImageFormat(url: $0) != nil }
+        let images = urls.filter(ImageFormat.canConvert(from:))
         // Only when every dragged file is an image — mixed drags are probably meant for somewhere else.
         return images.count == urls.count ? images : []
     }
