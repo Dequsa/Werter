@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let wheel = WheelController()
     private let dragWatcher = DragWatcher()
+    private let setup = SetupWindowController()
     private var statusItem: NSStatusItem?
     private var dragToggle: NSMenuItem?
 
@@ -28,11 +29,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setUpStatusItem()
-        dragWatcher.onImageDragStarted = { [weak self] urls in
+        dragWatcher.onWheelRequested = { [weak self] urls in
             guard let self, !self.wheel.isVisible else { return }
             self.wheel.present(urls, at: NSEvent.mouseLocation, mode: .drag)
         }
         if showsWheelWhileDragging { dragWatcher.start() }
+        if !SetupWindowController.hasCompletedSetup { setup.show() }
     }
 
     /// Finder "Open With", or files dropped on the app icon.
@@ -49,11 +51,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(withTitle: "Convert Images…", action: #selector(chooseFiles), keyEquivalent: "o").target = self
 
-        let toggle = NSMenuItem(title: "Show Wheel While Dragging Images", action: #selector(toggleDragWheel), keyEquivalent: "")
+        let toggle = NSMenuItem(title: "Show Wheel on ⌥-Drag", action: #selector(toggleDragWheel), keyEquivalent: "")
         toggle.target = self
         toggle.state = showsWheelWhileDragging ? .on : .off
         menu.addItem(toggle)
         dragToggle = toggle
+
+        menu.addItem(withTitle: "Setup & Permissions…", action: #selector(showSetup), keyEquivalent: ",").target = self
 
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit File Converter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -71,6 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         wheel.presentCentered(panel.urls)
+    }
+
+    @objc private func showSetup() {
+        setup.show()
     }
 
     @objc private func toggleDragWheel() {

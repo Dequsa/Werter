@@ -3,7 +3,8 @@ import AppKit
 @MainActor
 final class WheelController {
     enum Mode {
-        /// Shown under the cursor while the user drags files; dropping on a wedge converts.
+        /// Shown under the cursor when the user holds ⌥ while dragging files; dropping on a wedge converts.
+        /// Stays up until the drag ends, so ⌥ can be released before dropping.
         case drag
         /// Shown from the menu or "Open With"; clicking a wedge converts.
         case click

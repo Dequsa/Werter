@@ -74,7 +74,17 @@ final class WheelContainerView: NSView {
     private func updateHover(_ windowPoint: NSPoint) {
         guard model.phase == .choosing else { return }
         let format = format(at: windowPoint)
-        if format != model.hovered { model.hovered = format }
+        guard format != model.hovered else { return }
+        model.hovered = format
+        if let format { Self.tick(for: format) }
+    }
+
+    /// A trackpad tap when crossing onto a wedge, with a different feel per wedge
+    /// so you can tell them apart without looking. Needs a Force Touch trackpad.
+    private static func tick(for format: ImageFormat) {
+        let patterns: [NSHapticFeedbackManager.FeedbackPattern] = [.levelChange, .alignment, .generic]
+        let index = ImageFormat.allCases.firstIndex(of: format) ?? 0
+        NSHapticFeedbackManager.defaultPerformer.perform(patterns[index % patterns.count], performanceTime: .now)
     }
 
     // MARK: Drag and drop

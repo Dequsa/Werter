@@ -47,5 +47,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - "$APP" >/dev/null
+# macOS remembers privacy permissions (Desktop, Documents…) by the app's code signature.
+# An Apple Development certificate keeps that stable across rebuilds. Without one, sign
+# ad-hoc but pin the requirement to the bundle ID so each rebuild isn't a "new" app.
+IDENTITY="$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ { print $2; exit }')"
+if [[ -n "$IDENTITY" ]]; then
+    codesign --force --options runtime --sign "$IDENTITY" "$APP" >/dev/null
+    echo "Signed with $IDENTITY"
+else
+    codesign --force --sign - -r='designated => identifier "com.kacper.FileConverter"' "$APP" >/dev/null
+    echo "Signed ad-hoc (no Apple Development certificate found)"
+fi
 echo "Built $APP"
