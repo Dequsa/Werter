@@ -41,6 +41,10 @@ Or open `Package.swift` in Xcode. Run the tests with `swift test`.
 
 The build script signs with an Apple Development certificate when one is installed. Otherwise it signs ad-hoc with a fixed identifier so macOS keeps remembering folder permissions between rebuilds.
 
+## License
+
+[MIT](LICENSE). WebP encoding uses [libwebp](https://chromium.googlesource.com/webm/libwebp), © Google, under the BSD 3-Clause license.
+
 ## Notes
 
 - Photo conversion uses ImageIO. WebP output uses Google's [libwebp](https://github.com/SDWebImage/libwebp-Xcode) because macOS has no WebP encoder.
