@@ -16,7 +16,7 @@ final class SetupWindowController {
         if window == nil {
             let view = SetupView(permissions: permissions) { [weak self] in self?.finish() }
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-            window.title = "File Converter Setup"
+            window.title = "Werter Setup"
             window.styleMask = [.titled, .closable, .fullSizeContentView]
             window.titlebarAppearsTransparent = true
             window.isReleasedWhenClosed = false
@@ -49,7 +49,7 @@ struct SetupView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Welcome to File Converter")
+                Text("Welcome to Werter")
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                 Text("Hold **⌥ Option** while dragging photos or videos and the wheel appears. Drop on a format to convert; the copy is saved next to the original.\n\nAdd **⇧ Shift** for the actions wheel: smart crops, background removal, resizing, muting and more.")
                     .foregroundStyle(.secondary)

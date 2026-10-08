@@ -1,7 +1,7 @@
 import AVFoundation
 import ImageIO
 import XCTest
-@testable import FileConverter
+@testable import Werter
 
 final class VideoConverterTests: XCTestCase {
     private var directory: URL!

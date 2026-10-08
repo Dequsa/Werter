@@ -171,7 +171,7 @@ final class WheelController {
     private func finish(_ result: ConversionResult, job id: UUID, token: Int) {
         jobs[id] = nil
         if !result.failures.isEmpty {
-            NSLog("FileConverter: %@", result.failures.joined(separator: "; "))
+            NSLog("Werter: %@", result.failures.joined(separator: "; "))
         }
         publishJobStatus(finished: result)
 

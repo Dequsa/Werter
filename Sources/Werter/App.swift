@@ -2,7 +2,7 @@ import AppKit
 import UniformTypeIdentifiers
 
 @main
-enum FileConverterApp {
+enum WerterApp {
     @MainActor static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()
@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Bumped per status change so an old "finished" icon doesn't reset a newer one.
     private var statusGeneration = 0
     private static let idleIcon = NSImage(systemSymbolName: "arrow.triangle.2.circlepath",
-                                          accessibilityDescription: "File Converter")
+                                          accessibilityDescription: "Werter")
 
     private var showsWheelWhileDragging: Bool {
         get { UserDefaults.standard.object(forKey: Self.dragWheelKey) as? Bool ?? true }
@@ -88,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Setup & Permissions…", action: #selector(showSetup), keyEquivalent: ",").target = self
 
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit File Converter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit Werter", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         item.menu = menu
         statusItem = item

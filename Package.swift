@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "FileConverter",
+    name: "Werter",
     platforms: [.macOS(.v15)],
     dependencies: [
         // Google's libwebp; macOS can read WebP but has no encoder.
@@ -10,11 +10,11 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "FileConverter",
+            name: "Werter",
             dependencies: [.product(name: "libwebp", package: "libwebp-Xcode")],
-            path: "Sources/FileConverter"
+            path: "Sources/Werter"
         ),
-        .testTarget(name: "FileConverterTests", dependencies: ["FileConverter"], path: "Tests/FileConverterTests"),
+        .testTarget(name: "WerterTests", dependencies: ["Werter"], path: "Tests/WerterTests"),
     ],
     swiftLanguageModes: [.v5]
 )

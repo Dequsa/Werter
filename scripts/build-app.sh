@@ -1,27 +1,27 @@
 #!/bin/zsh
-# Builds build/File Converter.app from the Swift package.
+# Builds build/Werter.app from the Swift package.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CONFIG="${1:-release}"
-APP="build/File Converter.app"
+APP="build/Werter.app"
 
 swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/FileConverter"
+BIN="$(swift build -c "$CONFIG" --show-bin-path)/Werter"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/FileConverter"
+cp "$BIN" "$APP/Contents/MacOS/Werter"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>File Converter</string>
-    <key>CFBundleDisplayName</key><string>File Converter</string>
+    <key>CFBundleName</key><string>Werter</string>
+    <key>CFBundleDisplayName</key><string>Werter</string>
     <key>CFBundleIdentifier</key><string>com.kacper.FileConverter</string>
-    <key>CFBundleExecutable</key><string>FileConverter</string>
+    <key>CFBundleExecutable</key><string>Werter</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>

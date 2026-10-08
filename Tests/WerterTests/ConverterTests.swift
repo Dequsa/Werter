@@ -1,7 +1,7 @@
 import CoreGraphics
 import ImageIO
 import XCTest
-@testable import FileConverter
+@testable import Werter
 
 final class ConverterTests: XCTestCase {
     private var directory: URL!
